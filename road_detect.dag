@@ -1,0 +1,12 @@
+module_config {
+module_library : "/apollo/bazel-bin/Road_detect_cpp/road_detect_component.so"
+components {
+    class_name : "RoadDetectComponent"
+    config {
+        name : "road_detect"
+        readers {
+            channel: "/apollo/sensor/lidar128/compensator/PointCloud2"
+        }
+    }
+  }
+}

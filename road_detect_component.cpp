@@ -2,18 +2,23 @@
 #include <iostream>
 
 #include "cyber/common/file.h"
+#include "cyber/class_loader/class_loader.h"
+#include "cyber/component/component.h"
 
-bool RoadDetectComponent::Init(char *argv[]) {
-    apollo::cyber::Init(argv[0]);
-    this->detect_node = apollo::cyber::CreateNode("road_detect");
-    return apollo::cyber::OK();
+
+namespace apollo {
+    namespace road_detect {
+        bool RoadDetectComponent::Init() {
+            writer = detect_node->CreateWriter<PointCloud>("road_points");
+            return apollo::cyber::OK();
+        }
+
+        bool RoadDetectComponent::Proc(const std::shared_ptr<PointCloud> &msg) {
+           // writer->Write(msg);
+            return apollo::cyber::OK();
+        }
+    }
 }
-
-bool RoadDetectComponent::Proc(const std::shared_ptr<apollo::drivers::PointCloud>& msg) {
-    return apollo::cyber::OK();
-}
-
-
 
 
 
