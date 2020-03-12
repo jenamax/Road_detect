@@ -1,7 +1,7 @@
 <cyber>
     <module>
         <name>road_detect</name>
-        <dag_conf>/apollo/Road_detect_cpp/road_detect.dag</dag_conf>
+        <dag_conf>/apollo/modules/road_detect/road_detect.dag</dag_conf>
         <process_name>road_detect</process_name>
     </module>
 </cyber>

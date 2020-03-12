@@ -5,7 +5,7 @@
       <paths name="apollo_server">
         <serverdata>
           <mappings>
-            <mapping deploy="Road_detect_cpp" local="$PROJECT_DIR$" web="/home/aidar/" />
+            <mapping deploy="modules/road_detect" local="$PROJECT_DIR$" web="/home/aidar/" />
           </mappings>
         </serverdata>
       </paths>

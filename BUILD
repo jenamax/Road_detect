@@ -17,5 +17,7 @@ cc_library(
     deps = [
         "//cyber",
         "//modules/drivers/proto:sensor_proto",
+        "@pcl",
+        "@eigen",
     ],
 )

@@ -1,5 +1,5 @@
 module_config {
-module_library : "/apollo/bazel-bin/Road_detect_cpp/road_detect_component.so"
+module_library : "/apollo/bazel-bin/modules/road_detect/road_detect_component.so"
 components {
     class_name : "RoadDetectComponent"
     config {
