@@ -3,7 +3,7 @@
   <component name="WebServers">
     <option name="servers">
       <webServer id="c031496c-1740-4c52-a09d-f1f73a70a49e" name="apollo_server" url="http://unihost-dg03.uni.innopolis.ru">
-        <fileTransfer host="unihost-dg03.uni.innopolis.ru" port="22" rootFolder="/home/aidar/apollo_5.5/" accessType="SFTP">
+        <fileTransfer host="unihost-dg03.uni.innopolis.ru" port="22" rootFolder="/home/aidar/apollo/" accessType="SFTP">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>

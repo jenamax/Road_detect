@@ -4,8 +4,9 @@ components {
     class_name : "RoadDetectComponent"
     config {
         name : "road_detect"
+        flag_file_path: "/apollo/modules/road_detect/conf/config.conf"
         readers {
-            channel: "/apollo/sensor/lidar128/compensator/PointCloud2"
+            channel: "/apollo/sensor/lidar16/center/PointCloud2"
         }
     }
   }

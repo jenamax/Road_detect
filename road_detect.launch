@@ -2,6 +2,6 @@
     <module>
         <name>road_detect</name>
         <dag_conf>/apollo/modules/road_detect/road_detect.dag</dag_conf>
-        <process_name>road_detect</process_name>
+        <process_name>road_detect </process_name>
     </module>
 </cyber>

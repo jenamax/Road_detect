@@ -17,7 +17,13 @@ cc_library(
     deps = [
         "//cyber",
         "//modules/drivers/proto:sensor_proto",
+        "//modules/localization/proto:localization_proto",
+        "//modules/localization/proto:gps_proto",
+        "//modules/common/proto:geometry_proto",
+        "//modules/map/hdmap:hdmap",
+        "//modules/map/hdmap:hdmap_util",
         "@pcl",
         "@eigen",
+         "@com_google_absl//absl/strings",
     ],
 )
