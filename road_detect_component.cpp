@@ -1,6 +1,7 @@
 #include "road_detect_component.h"
 #include <iostream>
 #include <vector>
+#include <math.h>
 
 
 using std::cout;
@@ -11,6 +12,7 @@ using std::vector;
 
 double x = 0;
 double y = 0;
+double phi = 0;
 
 namespace apollo {
     namespace road_detect {
@@ -33,6 +35,10 @@ namespace apollo {
             LocalizationEstimate gps = *gps_msg;
             x = gps.pose().position().x();
             y = gps.pose().position().y();
+            phi = atan2(2.0 * (gps.pose().orientation().qy() * gps.pose().orientation().qz() +
+                    gps.pose().orientation().qw() * gps.pose().orientation().qx()), gps.pose().orientation().qw() * gps.pose().orientation().qw()
+                    - gps.pose().orientation().qx()*gps.pose().orientation().qx() - gps.pose().orientation().qy() * gps.pose().orientation().qy() +
+                    gps.pose().orientation().qz() * gps.pose().orientation().qz());
         }
 
         bool RoadDetectComponent::Init() {
@@ -90,6 +96,26 @@ namespace apollo {
                     return dist(cur_pose, lhs) < dist(cur_pose, rhs);
                 });
 
+                left_edge_points.at(0).at(0) -= x;
+                left_edge_points.at(0).at(0) = left_edge_points.at(0).at(0) * cos(phi) + left_edge_points.at(0).at(0) * sin(phi);
+                left_edge_points.at(0).at(1) -= y;
+                left_edge_points.at(0).at(1) = -left_edge_points.at(0).at(1) * sin(phi) + left_edge_points.at(0).at(1) * cos(phi);
+
+                left_edge_points.at(1).at(0) -= x;
+                left_edge_points.at(1).at(0) = left_edge_points.at(0).at(0) * cos(phi) + left_edge_points.at(0).at(0) * sin(phi);
+                left_edge_points.at(1).at(1) -= y;
+                left_edge_points.at(1).at(1) = -left_edge_points.at(0).at(1) * sin(phi) + left_edge_points.at(0).at(1) * cos(phi);
+
+                right_edge_points.at(0).at(0) -= x;
+                right_edge_points.at(0).at(0) = right_edge_points.at(0).at(0) * cos(phi) + right_edge_points.at(0).at(0) * sin(phi);
+                right_edge_points.at(0).at(1) -= y;
+                right_edge_points.at(0).at(1) = -right_edge_points.at(0).at(1) * sin(phi) + right_edge_points.at(0).at(1) * cos(phi);
+
+                right_edge_points.at(1).at(0) -= x;
+                right_edge_points.at(1).at(0) = right_edge_points.at(0).at(0) * cos(phi) + right_edge_points.at(0).at(0) * sin(phi);
+                right_edge_points.at(1).at(1) -= y;
+                right_edge_points.at(1).at(1) = -right_edge_points.at(0).at(1) * sin(phi) + right_edge_points.at(0).at(1) * cos(phi);
+
                 vector<double> left_edge = lineFromPoints(left_edge_points.at(0), left_edge_points.at(1));
                 vector<double> right_edge = lineFromPoints(right_edge_points.at(0), right_edge_points.at(1));
 
@@ -131,9 +157,9 @@ namespace apollo {
             msg_road = std::make_shared<PointCloud>();
             msg_road->mutable_point()->Reserve(240000);
             msg_road->Clear();
-            msg_road->mutable_header()->set_timestamp_sec(msg->measurement_time());
+            msg_road->mutable_header()->set_timestamp_sec(msg->measurement_time() + 0.05);
             msg_road->mutable_header()->set_frame_id(msg->header().frame_id());
-            msg_road->mutable_header()->set_lidar_timestamp(msg->measurement_time());
+            msg_road->mutable_header()->set_lidar_timestamp(msg->measurement_time() * 10e8 - 70);
             msg_road->set_measurement_time(msg->measurement_time());
             msg_road->set_height(1);
             msg_road->set_width(inliers->indices.size());
@@ -174,65 +200,5 @@ namespace apollo {
             }
             return cloud;
         }
-
-
-        pcl::PointIndices::Ptr RoadDetectComponent::cluster(pcl::PointXYZ searchPoint, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
-
-            std::vector<int> pointIdxRadiusSearch;
-            std::vector<float> pointRadiusSquaredDistance;
-
-            pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-            kdtree.setInputCloud(cloud);
-
-            float radius = 0.2;
-
-            std::vector<pcl::PointXYZ> open_set;
-            open_set.push_back(searchPoint);
-
-            pcl::PointIndices::Ptr close_set (new  pcl::PointIndices);
-            std::vector<int>::iterator it;
-            bool point_closed = false;
-            bool point_opened = false;
-            while (open_set.size() != 0){
-                if (kdtree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0) {
-                    for (unsigned int i = 1; i < pointIdxRadiusSearch.size(); ++i) {
-                        for (unsigned int j = 0; j < close_set->indices.size(); j++){
-                            if (cloud->points[close_set->indices.at(j)].x == cloud->points[pointIdxRadiusSearch[i]].x &&
-                                    cloud->points[close_set->indices.at(j)].y == cloud->points[pointIdxRadiusSearch[i]].y &&
-                                    cloud->points[close_set->indices.at(j)].z == cloud->points[pointIdxRadiusSearch[i]].z){
-                                point_closed = true;
-                                break;
-                            }
-                        }
-                        for (unsigned int j = 0; j < open_set.size(); j++){
-                            if (open_set.at(j).x == cloud->points[pointIdxRadiusSearch[i]].x &&
-                                    open_set.at(j).y == cloud->points[pointIdxRadiusSearch[i]].y &&
-                                    open_set.at(j).z == cloud->points[pointIdxRadiusSearch[i]].z){
-                                point_opened = true;
-                                break;
-                            }
-                        }
-                        if (!point_closed && !point_opened) {
-
-                            open_set.push_back(cloud->points[pointIdxRadiusSearch[i]]);
-                        }
-                        point_closed = false;
-                        point_opened = false;
-                    }
-                }
-                unsigned int ind;
-                for (unsigned int i = 0; i < cloud->points.size(); i++){
-                    if (cloud->points[i].x == searchPoint.x && cloud->points[i].y == searchPoint.y && cloud->points[i].z == searchPoint.z){
-                        ind = i;
-                        break;
-                    }
-                }
-                close_set->indices.push_back(ind);
-                open_set.erase(open_set.begin());
-                searchPoint = open_set.front();
-            }
-            return close_set;
-        };
-
     }
 }

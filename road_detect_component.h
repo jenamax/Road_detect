@@ -55,7 +55,6 @@ namespace apollo {
                     float roi_x_min = -1000, float roi_x_max = 1000, float roi_y_min = -1000, float roi_y_max = 1000,
                     float roi_z_min = -1000, float roi_z_max = 1000);
 
-            pcl::PointIndices::Ptr cluster(pcl::PointXYZ searchPoint, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
             //void GnssCallback(const std::shared_ptr<apollo::localization::Gps> &gps_msg);
 
             const HDMap* map;
