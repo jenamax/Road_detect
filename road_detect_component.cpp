@@ -14,116 +14,31 @@ double x = 0;
 double y = 0;
 double phi = 0;
 
+double lower_bound_angle = -15;
+double upper_bound_angle = 15;
+int nScanRings = 16;
+double factor = (nScanRings - 1) / (upper_bound_angle - lower_bound_angle);
+
 namespace apollo {
     namespace road_detect {
 
-        double dist(vector<double> p1, vector<double> p2){
-            return (p1.at(0) - p2.at(0)) * (p1.at(0) - p2.at(0)) + (p1.at(1) - p2.at(1)) * (p1.at(1) - p2.at(1));
-        }
+        int scan_line_num(pcl::PointXYZ point){
+            double x = point.x;
+            double y = point.y;
+            double z = point.z;
 
-        vector<double> lineFromPoints(vector<double> p1, vector<double> p2){
-            double k = (p1.at(1) - p2.at(1)) / (p1.at(0) - p2.at(0));
-            double b = p1.at(1) - k * p1.at(0);
-
-            vector<double> cof;
-            cof.push_back(k);
-            cof.push_back(b);
-            return cof;
-        }
-
-        void GnssCallback(const std::shared_ptr<apollo::localization::LocalizationEstimate> &gps_msg) {
-            LocalizationEstimate gps = *gps_msg;
-            x = gps.pose().position().x();
-            y = gps.pose().position().y();
-            phi = atan2(2.0 * (gps.pose().orientation().qy() * gps.pose().orientation().qz() +
-                    gps.pose().orientation().qw() * gps.pose().orientation().qx()), gps.pose().orientation().qw() * gps.pose().orientation().qw()
-                    - gps.pose().orientation().qx()*gps.pose().orientation().qx() - gps.pose().orientation().qy() * gps.pose().orientation().qy() +
-                    gps.pose().orientation().qz() * gps.pose().orientation().qz());
+            double angle = atan(z / sqrt(x*x + y*y));
+            return int(((angle * 180 / M_PI) - lower_bound_angle) * factor + 0.5);
         }
 
         bool RoadDetectComponent::Init() {
             writer = node_->CreateWriter<PointCloud>("/apollo/road_pcl");
-            gnss_listener = node_->CreateReader<LocalizationEstimate>(
-                            "/apollo/localization/pose", GnssCallback);
-            //map = apollo::hdmap::CreateMap("map/sim_map.bin");
-            map = apollo::hdmap::HDMapUtil::BaseMapPtr();
             return apollo::cyber::OK();
         }
 
         bool RoadDetectComponent::Proc(const std::shared_ptr<PointCloud> &msg) {
             auto start = cyber::Time::Now();
             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-            std::vector<RoadInfoConstPtr> roads;
-            const std::shared_ptr<PointENU> cur_pos = std::make_shared<PointENU>();
-            cur_pos->set_x(x);
-            cur_pos->set_y(y);
-            map->GetRoads(*cur_pos, 10, &roads);
-            cout << x << " " << y << endl;
-
-            std::vector<std::vector<double>> left_edge_points;
-            std::vector<std::vector<double>> right_edge_points;
-            double kl = 0, kr = 0, br = 0, bl = 0;
-            if (roads.size() > 0) {
-                for (const auto &road : roads) {
-                    for (const auto &section : road->road().section()) {
-                        for (const auto &edge : section.boundary().outer_polygon().edge()) {
-                            for (const auto &segment : edge.curve().segment()) {
-                                for (const auto &point : segment.line_segment().point()) {
-                                    std::vector<double> tmp;
-                                    tmp.push_back(point.x());
-                                    tmp.push_back(point.y());
-                                    if (edge.type() == 2) {
-                                        left_edge_points.push_back(tmp);
-                                    } else if (edge.type() == 3) {
-                                        right_edge_points.push_back(tmp);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                vector<double> cur_pose;
-                cur_pose.push_back(x);
-                cur_pose.push_back(y);
-
-                std::sort(left_edge_points.begin(), left_edge_points.end(), [cur_pose](const vector<double> lhs,
-                                                                                       const vector<double> rhs) {
-                    return dist(cur_pose, lhs) < dist(cur_pose, rhs);
-                });
-                std::sort(right_edge_points.begin(), right_edge_points.end(), [cur_pose](const vector<double> lhs,
-                                                                                         const vector<double> rhs) {
-                    return dist(cur_pose, lhs) < dist(cur_pose, rhs);
-                });
-
-                left_edge_points.at(0).at(0) -= x;
-                left_edge_points.at(0).at(0) = left_edge_points.at(0).at(0) * cos(phi) + left_edge_points.at(0).at(0) * sin(phi);
-                left_edge_points.at(0).at(1) -= y;
-                left_edge_points.at(0).at(1) = -left_edge_points.at(0).at(1) * sin(phi) + left_edge_points.at(0).at(1) * cos(phi);
-
-                left_edge_points.at(1).at(0) -= x;
-                left_edge_points.at(1).at(0) = left_edge_points.at(0).at(0) * cos(phi) + left_edge_points.at(0).at(0) * sin(phi);
-                left_edge_points.at(1).at(1) -= y;
-                left_edge_points.at(1).at(1) = -left_edge_points.at(0).at(1) * sin(phi) + left_edge_points.at(0).at(1) * cos(phi);
-
-                right_edge_points.at(0).at(0) -= x;
-                right_edge_points.at(0).at(0) = right_edge_points.at(0).at(0) * cos(phi) + right_edge_points.at(0).at(0) * sin(phi);
-                right_edge_points.at(0).at(1) -= y;
-                right_edge_points.at(0).at(1) = -right_edge_points.at(0).at(1) * sin(phi) + right_edge_points.at(0).at(1) * cos(phi);
-
-                right_edge_points.at(1).at(0) -= x;
-                right_edge_points.at(1).at(0) = right_edge_points.at(0).at(0) * cos(phi) + right_edge_points.at(0).at(0) * sin(phi);
-                right_edge_points.at(1).at(1) -= y;
-                right_edge_points.at(1).at(1) = -right_edge_points.at(0).at(1) * sin(phi) + right_edge_points.at(0).at(1) * cos(phi);
-
-                vector<double> left_edge = lineFromPoints(left_edge_points.at(0), left_edge_points.at(1));
-                vector<double> right_edge = lineFromPoints(right_edge_points.at(0), right_edge_points.at(1));
-
-                kl = left_edge.at(0);
-                kr = right_edge.at(0);
-                bl = left_edge.at(1);
-                br = right_edge.at(1);
-            }
 
 
             cloud = ConvertToPCL(msg);
@@ -138,39 +53,96 @@ namespace apollo {
             seg.setInputCloud (cloud);
             seg.segment (*inliers, *coefficients);
 
-            cout << inliers->indices.size()<< endl;
+            cout << msg->height() * msg->width() << " " << inliers->indices.size()<< endl;
 
             pcl::PointCloud<pcl::PointXYZ>::Ptr plane_points(new pcl::PointCloud <pcl::PointXYZ>);
             plane_points->points.resize(inliers->indices.size());
-
-//            pcl::PointXYZ cluster_start_point;
-//            for (unsigned int i = 0; i < inliers->indices.size(); i++){
-//                plane_points->points[i].x = cloud->points[inliers->indices.at(i)].x;
-//                plane_points->points[i].y = cloud->points[inliers->indices.at(i)].y;
-//                plane_points->points[i].z = cloud->points[inliers->indices.at(i)].z;
-//                if (cloud->points[inliers->indices.at(i)].y > -0.2 && cloud->points[inliers->indices.at(i)].y < 0.2){
-//                    cluster_start_point = cloud->points[inliers->indices.at(i)];
-//                }
-//            }
 
             std::shared_ptr<PointCloud> msg_road;
             msg_road = std::make_shared<PointCloud>();
             msg_road->mutable_point()->Reserve(240000);
             msg_road->Clear();
-            msg_road->mutable_header()->set_timestamp_sec(msg->measurement_time() + 0.05);
+            msg_road->mutable_header()->set_timestamp_sec(msg->header().timestamp_sec());
             msg_road->mutable_header()->set_frame_id(msg->header().frame_id());
-            msg_road->mutable_header()->set_lidar_timestamp(msg->measurement_time() * 10e8 - 70);
+            msg_road->mutable_header()->set_lidar_timestamp(msg->header().lidar_timestamp());
             msg_road->set_measurement_time(msg->measurement_time());
             msg_road->set_height(1);
             msg_road->set_width(inliers->indices.size());
             msg_road->set_is_dense(msg->is_dense());
 
+            vector<vector<int>> scan_lines;
+
+            for (int i = 0; i < 16; i++){
+                scan_lines.push_back({});
+            }
+
             for (unsigned int i = 0; i < inliers->indices.size(); i++){
-                auto* point_new = msg_road->add_point();
-                x = msg->point(inliers->indices.at(i)).x();
-                y = msg->point(inliers->indices.at(i)).y();
-                if (roads.size() > 0 && (kl * x + bl < y && kr * x + br > y || kl * x + bl > y && kr * x + br < y)) {
-                    point_new->CopyFrom(msg->point(inliers->indices.at(i)));
+                scan_lines.at(scan_line_num(cloud->points[inliers->indices[i]])).push_back(inliers->indices[i]);
+            }
+
+            for (int i = 0; i < 16; i++){
+                cout << scan_lines[i].size() << " " ;
+            }
+            cout << endl;
+
+            vector<double> threshold;
+            vector<vector<double>> smoothness;
+            for (int i = 0; i < 8; i++){
+                smoothness.push_back({});
+            }
+
+            double x, y, z, x_i1, y_i1, z_i1, x_i2, y_i2, z_i2, s;
+
+            vector<vector<int>> road_mask;
+            for (int i = 0; i < 8; i++){
+                road_mask.push_back({});
+            }
+            threshold = {152, 132, 112, 89, 69, 48, 28, 8};
+            for (int i = 0; i < 8; i++) {
+                for (unsigned int j = 2; j < scan_lines[i].size(); j++) {
+                    x = msg->point(scan_lines[i][j]).x();
+                    y = msg->point(scan_lines[i][j]).y();
+                    z = msg->point(scan_lines[i][j]).z();
+
+                    x_i1 = msg->point(scan_lines[i][j - 1]).x();
+                    y_i1 = msg->point(scan_lines[i][j - 1]).y();
+                    z_i1 = msg->point(scan_lines[i][j - 1]).z();
+
+                    x_i2 = msg->point(scan_lines[i][j - 2]).x();
+                    y_i2 = msg->point(scan_lines[i][j - 2]).y();
+                    z_i2 = msg->point(scan_lines[i][j - 2]).z();
+
+                    s = z - z_i1 / sqrt((x - x_i1)*(x - x_i1) + (y - y_i1)*(y - y_i1)) - z_i1 - z_i2 / sqrt((x_i2 - x_i1)*(x_i2 - x_i1) + (y_i2 - y_i1)*(y_i2 - y_i1));
+                    smoothness[i].push_back(abs(s));
+                    road_mask[i].push_back((int)(s > threshold[i]));
+                }
+            }
+
+            vector<vector<int>> road_mask_averaged;
+            for (int i = 0; i < 8; i++){
+                road_mask.push_back({});
+            }
+
+            for (int i = 0; i < 8; i++) {
+                for (unsigned int j = 2; j < scan_lines[i].size(); j++) {
+                    x = msg->point(scan_lines[i][j]).x();
+                    y = msg->point(scan_lines[i][j]).y();
+                    z = msg->point(scan_lines[i][j]).z();
+
+                    x_i1 = msg->point(scan_lines[i][j - 1]).x();
+                    y_i1 = msg->point(scan_lines[i][j - 1]).y();
+                    z_i1 = msg->point(scan_lines[i][j - 1]).z();
+
+                    x_i2 = msg->point(scan_lines[i][j - 2]).x();
+                    y_i2 = msg->point(scan_lines[i][j - 2]).y();
+                    z_i2 = msg->point(scan_lines[i][j - 2]).z();
+
+                    s = z - z_i1 / sqrt((x - x_i1)*(x - x_i1) + (y - y_i1)*(y - y_i1)) - z_i1 - z_i2 / sqrt((x_i2 - x_i1)*(x_i2 - x_i1) + (y_i2 - y_i1)*(y_i2 - y_i1));
+                    if (abs(s) > threshold[i]) {
+                        //cout << abs(s) << " " << threshold[i] << endl;
+                        auto *point_new = msg_road->add_point();
+                        point_new->CopyFrom(msg->point(scan_lines[i][j]));
+                    }
                 }
             }
 
