@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 #include <math.h>
+#include <numeric>
 
 
 using std::cout;
@@ -22,12 +23,16 @@ double factor = (nScanRings - 1) / (upper_bound_angle - lower_bound_angle);
 namespace apollo {
     namespace road_detect {
 
-        int scan_line_num(pcl::PointXYZ point){
+        double point_angle(pcl::PointXYZ point){
             double x = point.x;
             double y = point.y;
             double z = point.z;
 
-            double angle = atan(z / sqrt(x*x + y*y));
+            return atan(z / sqrt(x*x + y*y));
+        }
+
+        int scan_line_num(pcl::PointXYZ point){
+            double  angle = point_angle(point);
             return int(((angle * 180 / M_PI) - lower_bound_angle) * factor + 0.5);
         }
 
@@ -42,7 +47,6 @@ namespace apollo {
 
 
             cloud = ConvertToPCL(msg);
-            cout << x << " " << y << endl;
             pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
             pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
             pcl::SACSegmentation<pcl::PointXYZ> seg;
@@ -76,8 +80,15 @@ namespace apollo {
                 scan_lines.push_back({});
             }
 
+            double roi_x_min = -3, roi_x_max = 30, roi_y_min = -10, roi_y_max = 10;
+            double x, y, z, x_i1, y_i1, z_i1, x_i2, y_i2, z_i2, s, x1, y1, z1;
+
+
             for (unsigned int i = 0; i < inliers->indices.size(); i++){
-                scan_lines.at(scan_line_num(cloud->points[inliers->indices[i]])).push_back(inliers->indices[i]);
+                x = msg->point(inliers->indices[i]).x();
+                y = msg->point(inliers->indices[i]).y();
+                if (x > roi_x_min && x < roi_x_max && y > roi_y_min && y < roi_y_max)
+                    scan_lines.at(scan_line_num(cloud->points[inliers->indices[i]])).push_back(inliers->indices[i]);
             }
 
             for (int i = 0; i < 16; i++){
@@ -91,14 +102,9 @@ namespace apollo {
                 smoothness.push_back({});
             }
 
-            double x, y, z, x_i1, y_i1, z_i1, x_i2, y_i2, z_i2, s;
-
-            vector<vector<int>> road_mask;
-            for (int i = 0; i < 8; i++){
-                road_mask.push_back({});
-            }
+            vector<int> road_points;
             threshold = {152, 132, 112, 89, 69, 48, 28, 8};
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < 7; i++) {
                 for (unsigned int j = 2; j < scan_lines[i].size(); j++) {
                     x = msg->point(scan_lines[i][j]).x();
                     y = msg->point(scan_lines[i][j]).y();
@@ -114,37 +120,132 @@ namespace apollo {
 
                     s = z - z_i1 / sqrt((x - x_i1)*(x - x_i1) + (y - y_i1)*(y - y_i1)) - z_i1 - z_i2 / sqrt((x_i2 - x_i1)*(x_i2 - x_i1) + (y_i2 - y_i1)*(y_i2 - y_i1));
                     smoothness[i].push_back(abs(s));
-                    road_mask[i].push_back((int)(s > threshold[i]));
-                }
-            }
-
-            vector<vector<int>> road_mask_averaged;
-            for (int i = 0; i < 8; i++){
-                road_mask.push_back({});
-            }
-
-            for (int i = 0; i < 8; i++) {
-                for (unsigned int j = 2; j < scan_lines[i].size(); j++) {
-                    x = msg->point(scan_lines[i][j]).x();
-                    y = msg->point(scan_lines[i][j]).y();
-                    z = msg->point(scan_lines[i][j]).z();
-
-                    x_i1 = msg->point(scan_lines[i][j - 1]).x();
-                    y_i1 = msg->point(scan_lines[i][j - 1]).y();
-                    z_i1 = msg->point(scan_lines[i][j - 1]).z();
-
-                    x_i2 = msg->point(scan_lines[i][j - 2]).x();
-                    y_i2 = msg->point(scan_lines[i][j - 2]).y();
-                    z_i2 = msg->point(scan_lines[i][j - 2]).z();
-
-                    s = z - z_i1 / sqrt((x - x_i1)*(x - x_i1) + (y - y_i1)*(y - y_i1)) - z_i1 - z_i2 / sqrt((x_i2 - x_i1)*(x_i2 - x_i1) + (y_i2 - y_i1)*(y_i2 - y_i1));
-                    if (abs(s) > threshold[i]) {
-                        //cout << abs(s) << " " << threshold[i] << endl;
-                        auto *point_new = msg_road->add_point();
-                        point_new->CopyFrom(msg->point(scan_lines[i][j]));
+                    if (s > threshold[i]){
+                        road_points.push_back(scan_lines[i][j]);
                     }
                 }
             }
+
+            vector<int> road_points_filtered;
+
+            double dist = 0.5, d;
+            int n = 7;
+            int in_circle;
+            double mean_y = 0;
+            double std_y = 0;
+            for (unsigned int i = 0; i < road_points.size(); i++) {
+                in_circle = 0;
+                x = msg->point(road_points[i]).x();
+                y = msg->point(road_points[i]).y();
+                z = msg->point(road_points[i]).z();
+                for (unsigned int j = 0; j < road_points.size(); j++) {
+                    if (i == j){
+                        continue;
+                    }
+                    x1 = msg->point(road_points[j]).x();
+                    y1 = msg->point(road_points[j]).y();
+                    z1 = msg->point(road_points[j]).z();
+
+                    d = sqrt((x - x1)*(x - x1) + (y - y1)*(y - y1) + (z - z1)*(z - z1));
+                    if (d < dist){
+                        in_circle++;
+                    }
+                }
+                if (in_circle > n){
+                    road_points_filtered.push_back(road_points[i]);
+                    mean_y += msg->point(road_points[i]).y();
+                }
+            }
+            mean_y /= road_points_filtered.size();
+
+            for (unsigned int i = 0; i < road_points_filtered.size(); i++) {
+                std_y += fabs(msg->point(road_points_filtered[i]).y() - mean_y);
+            }
+            std_y /= road_points_filtered.size();
+
+            for (unsigned int i = 0; i < road_points_filtered.size(); i++) {
+                if (fabs(msg->point(road_points_filtered[i]).y() - mean_y) > 2 * std_y){
+                    road_points_filtered.erase(road_points_filtered.begin()+i);
+                }
+            }
+
+
+
+            vector<int> left_edges_points;
+            vector<int> right_edges_points;
+
+            vector<vector<int>> scan_lines_road;
+            vector<vector<int>> scan_angles_road;
+            for (int i = 0; i < 8; i++){
+                scan_lines_road.push_back({});
+                scan_angles_road.push_back({});
+            }
+
+            int line;
+
+            for (unsigned int i = 0; i < road_points_filtered.size(); i++){
+                line = scan_line_num(cloud->points[road_points_filtered[i]]);
+                scan_lines_road[line].push_back(road_points_filtered[i]);
+                scan_angles_road[line].push_back(point_angle(cloud->points[road_points_filtered[i]]));
+            }
+
+            for (int i = 0; i < 7; i++){
+                if (scan_lines_road[i].size() == 0){
+                    continue;
+                }
+                std::pair <double, int> pr[scan_lines_road[i].size()];
+                for(unsigned int j = 0 ; j < scan_lines_road[i].size(); j++){
+                    pr[j] = std::make_pair(scan_angles_road[i][j], scan_lines_road[i][j]);
+                }
+                std::sort(pr, pr+scan_lines_road[i].size());
+                for (unsigned int j = 0; j < scan_lines_road[i].size(); j++){
+                    scan_lines_road[i][j] = pr[j].second;
+                }
+                left_edges_points.push_back(scan_lines_road[i][0]);
+                right_edges_points.push_back(scan_lines_road[i][scan_lines_road[i].size() - 1]);
+            }
+
+            cout << left_edges_points.size() << " " << right_edges_points.size() << endl;
+
+            for (unsigned int i = 0; i < left_edges_points.size(); i++) {
+                auto *point_new = msg_road->add_point();
+                point_new->CopyFrom(msg->point(left_edges_points[i]));
+            }
+
+            for (unsigned int i = 0; i < right_edges_points.size(); i++) {
+                auto *point_new = msg_road->add_point();
+                point_new->CopyFrom(msg->point(right_edges_points[i]));
+            }
+
+//            for (unsigned int i = 0; i < road_points_filtered.size(); i++) {
+//                auto *point_new = msg_road->add_point();
+//                point_new->CopyFrom(msg->point(road_points_filtered[i]));
+//            }
+
+
+//
+//            for (int i = 0; i < 8; i++) {
+//                for (unsigned int j = 2; j < scan_lines[i].size(); j++) {
+//                    x = msg->point(scan_lines[i][j]).x();
+//                    y = msg->point(scan_lines[i][j]).y();
+//                    z = msg->point(scan_lines[i][j]).z();
+//
+//                    x_i1 = msg->point(scan_lines[i][j - 1]).x();
+//                    y_i1 = msg->point(scan_lines[i][j - 1]).y();
+//                    z_i1 = msg->point(scan_lines[i][j - 1]).z();
+//
+//                    x_i2 = msg->point(scan_lines[i][j - 2]).x();
+//                    y_i2 = msg->point(scan_lines[i][j - 2]).y();
+//                    z_i2 = msg->point(scan_lines[i][j - 2]).z();
+//
+//                    s = z - z_i1 / sqrt((x - x_i1)*(x - x_i1) + (y - y_i1)*(y - y_i1)) - z_i1 - z_i2 / sqrt((x_i2 - x_i1)*(x_i2 - x_i1) + (y_i2 - y_i1)*(y_i2 - y_i1));
+//                    if (abs(s) > threshold[i]) {
+//                        //cout << abs(s) << " " << threshold[i] << endl;
+//                        auto *point_new = msg_road->add_point();
+//                        point_new->CopyFrom(msg->point(scan_lines[i][j]));
+//                    }
+//                }
+//            }
 
             msg_road->mutable_header()->set_sequence_num(seq++);
             writer->Write(msg_road);
