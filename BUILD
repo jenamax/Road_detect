@@ -13,7 +13,7 @@ cc_binary(
 cc_library(
     name = "road_detect_component_lib",
     srcs = ["road_detect_component.cpp",],
-    hdrs = ["road_detect_component.h",],
+    hdrs = ["road_detect_component.h", "DigitalFilters-master/DigitalFilters.h", "DigitalFilters-master/CircularDelay/CircularDelay.hpp"],
     deps = [
         "//cyber",
         "//modules/drivers/proto:sensor_proto",
@@ -24,6 +24,6 @@ cc_library(
         "//modules/map/hdmap:hdmap_util",
         "@pcl",
         "@eigen",
-         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings",
     ],
 )
